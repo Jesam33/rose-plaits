@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-
+import { supabase } from '../utils/supabase';
 import { BRAND } from "./config";
 import img1 from "../images/img-1.jpg";
 import img2 from "../images/img-2.jpg";
@@ -284,12 +284,35 @@ export default function HomeClient({ initialServices, initialGallery }) {
   const [name, setName] = useState("");
   const [serviceType, setServiceType] = useState("in-studio"); // "in-studio" or "mobile"
   const [streetAddress, setStreetAddress] = useState("");
-  const [location, setLocation] = useState("");
+  const [location, setLocation] = useState("Brantford");
   const [selectedService, setSelectedService] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [notes, setNotes] = useState("");
   const [customStyle, setCustomStyle] = useState("");
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch booked slots when date changes
+  useEffect(() => {
+    async function fetchBookedSlots() {
+      if (!date) {
+        setBookedSlots([]);
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('time')
+        .eq('date', date);
+        
+      if (!error && data) {
+        setBookedSlots(data.map(d => d.time));
+      }
+    }
+    
+    fetchBookedSlots();
+  }, [date]);
 
   // UI State
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -333,11 +356,51 @@ export default function HomeClient({ initialServices, initialGallery }) {
     return `Hello Rose Plaits Studio! 🌸\n\nI would like to book a professional hair styling session. Here are my details:\n\n✨ Name: ${clientName}\n📍 Location: ${chosenLocation}\n💆 Setting: ${chosenSetting}${addressLine}\n💇 Service: ${serviceName}\n📅 Preferred Date: ${friendlyDate}\n⏰ Preferred Time: ${chosenTime}${customNotes}\n\nLooking forward to confirming my appointment slot! 🌹`;
   };
 
-  // Handle WhatsApp Redirection
-  const handleBookingSubmit = (e) => {
+  // Handle WhatsApp Redirection & Booking
+  const handleBookingSubmit = async (e) => {
     e.preventDefault();
     if (!name || !location || !selectedService || !date || !time || (serviceType === "mobile" && !streetAddress)) {
       alert("Please fill in all core fields: Name, Location, Address (for mobile), Hairstyle, Date, and Time.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    // Double check if the slot was just booked by someone else
+    const { data: existingSlot, error: checkError } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('date', date)
+      .eq('time', time);
+
+    if (existingSlot && existingSlot.length > 0) {
+      alert("Sorry, this slot was just booked by someone else! Please select another time.");
+      setIsSubmitting(false);
+      // Re-fetch slots to update the UI
+      const { data } = await supabase.from('appointments').select('time').eq('date', date);
+      if (data) setBookedSlots(data.map(d => d.time));
+      setTime(""); // Reset selected time
+      return;
+    }
+
+    // Insert the new appointment to block the slot
+    const { error: insertError } = await supabase
+      .from('appointments')
+      .insert([{
+        name,
+        location,
+        service_type: serviceType,
+        street_address: streetAddress,
+        service: selectedService,
+        date,
+        time,
+        notes
+      }]);
+
+    if (insertError) {
+      console.error("Failed to save appointment:", insertError);
+      alert("There was an error securing your slot. Please try again.");
+      setIsSubmitting(false);
       return;
     }
 
@@ -351,6 +414,7 @@ export default function HomeClient({ initialServices, initialGallery }) {
 
       window.open(whatsappUrl, "_blank");
       setIsSuccessPopupOpen(false);
+      setIsSubmitting(false);
     }, 1800);
   };
 
@@ -949,10 +1013,10 @@ export default function HomeClient({ initialServices, initialGallery }) {
                       className="form-input"
                     >
                       <option value="" disabled>-- Slot --</option>
-                      <option value="9:00 AM">9:00 AM (Morning)</option>
-                      <option value="11:30 AM">11:30 AM (Midday)</option>
-                      <option value="2:00 PM">2:00 PM (Afternoon)</option>
-                      <option value="4:30 PM">4:30 PM (Late Session)</option>
+                      <option value="9:00 AM" disabled={bookedSlots.includes("9:00 AM")}>9:00 AM (Morning) {bookedSlots.includes("9:00 AM") ? "(Booked)" : ""}</option>
+                      <option value="11:30 AM" disabled={bookedSlots.includes("11:30 AM")}>11:30 AM (Midday) {bookedSlots.includes("11:30 AM") ? "(Booked)" : ""}</option>
+                      <option value="2:00 PM" disabled={bookedSlots.includes("2:00 PM")}>2:00 PM (Afternoon) {bookedSlots.includes("2:00 PM") ? "(Booked)" : ""}</option>
+                      <option value="4:30 PM" disabled={bookedSlots.includes("4:30 PM")}>4:30 PM (Late Session) {bookedSlots.includes("4:30 PM") ? "(Booked)" : ""}</option>
                     </select>
                   </div>
                 </div>
@@ -973,13 +1037,19 @@ export default function HomeClient({ initialServices, initialGallery }) {
                 <div className="booking-submit-group" style={{ marginTop: "2rem" }}>
                   <button
                     type="submit"
+                    disabled={isSubmitting}
                     className="btn-primary-flyer booking-submit-btn"
+                    style={{ opacity: isSubmitting ? 0.7 : 1 }}
                   >
-                    {/* Inline WhatsApp SVG */}
-                    <svg className="whatsapp-submit-icon" viewBox="0 0 24 24">
-                      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.45L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.625 1.449 5.49 0 9.951-4.437 9.954-9.878.001-2.636-1.02-5.118-2.879-6.973C16.485 1.897 14.008.876 11.996.876c-5.5 0-9.96 4.439-9.964 9.882-.002 1.96.52 3.875 1.513 5.582L2.52 21.43l5.127-1.346-.999-.93zm11.667-6.84c-.313-.156-1.854-.915-2.141-1.018-.287-.104-.497-.156-.707.156-.21.312-.811 1.018-.994 1.226-.183.208-.365.234-.678.078-.313-.156-1.32-.486-2.514-1.549-.93-.83-1.558-1.855-1.741-2.167-.183-.312-.02-.482.137-.638.141-.14.313-.365.47-.547.156-.182.208-.312.313-.52.104-.208.052-.39-.026-.546-.078-.156-.707-1.7-.968-2.327-.255-.612-.513-.53-.707-.54-.183-.01-.393-.01-.603-.01s-.551.078-.84.39c-.287.313-1.096 1.07-1.096 2.607s1.12 3.023 1.277 3.23c.156.208 2.203 3.364 5.336 4.719.745.322 1.327.515 1.782.659.749.237 1.432.204 1.971.124.602-.09 1.854-.758 2.115-1.458.262-.699.262-1.299.183-1.428-.078-.129-.287-.207-.601-.363z" />
-                    </svg>
-                    Book Via Whatsapp
+                    {isSubmitting ? "Securing Slot..." : (
+                      <>
+                        {/* Inline WhatsApp SVG */}
+                        <svg className="whatsapp-submit-icon" viewBox="0 0 24 24">
+                          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.45L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.625 1.449 5.49 0 9.951-4.437 9.954-9.878.001-2.636-1.02-5.118-2.879-6.973C16.485 1.897 14.008.876 11.996.876c-5.5 0-9.96 4.439-9.964 9.882-.002 1.96.52 3.875 1.513 5.582L2.52 21.43l5.127-1.346-.999-.93zm11.667-6.84c-.313-.156-1.854-.915-2.141-1.018-.287-.104-.497-.156-.707.156-.21.312-.811 1.018-.994 1.226-.183.208-.365.234-.678.078-.313-.156-1.32-.486-2.514-1.549-.93-.83-1.558-1.855-1.741-2.167-.183-.312-.02-.482.137-.638.141-.14.313-.365.47-.547.156-.182.208-.312.313-.52.104-.208.052-.39-.026-.546-.078-.156-.707-1.7-.968-2.327-.255-.612-.513-.53-.707-.54-.183-.01-.393-.01-.603-.01s-.551.078-.84.39c-.287.313-1.096 1.07-1.096 2.607s1.12 3.023 1.277 3.23c.156.208 2.203 3.364 5.336 4.719.745.322 1.327.515 1.782.659.749.237 1.432.204 1.971.124.602-.09 1.854-.758 2.115-1.458.262-.699.262-1.299.183-1.428-.078-.129-.287-.207-.601-.363z" />
+                        </svg>
+                        Book Via Whatsapp
+                      </>
+                    )}
                   </button>
 
                 </div>
