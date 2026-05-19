@@ -1,19 +1,35 @@
 import HomeClient from "./HomeClient";
-import fs from "fs/promises";
-import path from "path";
+
 import { BRAND } from "./config";
 
 // Force dynamic server rendering (SSR) so database edits show up immediately on refresh
 export const dynamic = "force-dynamic";
 
+import { supabase } from '../utils/supabase';
+
 async function getDbData() {
   try {
-    const dbPath = path.join(process.cwd(), "src", "data", "db.json");
-    const fileContent = await fs.readFile(dbPath, "utf-8");
-    const data = JSON.parse(fileContent);
+    // Attempt to fetch from Supabase first
+    const { data: servicesData, error: servicesError } = await supabase
+      .from('services')
+      .select('*');
+      
+    const { data: galleryData, error: galleryError } = await supabase
+      .from('gallery')
+      .select('*');
+
+    // If there's an error or no data (e.g. keys not set or tables empty), fallback to defaults
+    if (servicesError || galleryError || !servicesData?.length) {
+      console.warn("Supabase fetch failed or empty, using fallback config:", servicesError || galleryError);
+      return {
+        services: BRAND.services,
+        gallery: BRAND.gallery
+      };
+    }
+
     return {
-      services: data.services || BRAND.services,
-      gallery: data.gallery || BRAND.gallery
+      services: servicesData || BRAND.services,
+      gallery: galleryData || BRAND.gallery
     };
   } catch (error) {
     console.error("Error reading database server-side, using config defaults:", error);
