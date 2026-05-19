@@ -1,0 +1,66 @@
+{
+  "services": [
+    {
+      "id": "fixing-dreadlocs",
+      "name": "Fixing Dreadlocs",
+      "price": "$110 - $180",
+      "duration": "3 - 5 hrs",
+      "description": "Professional loc restoration, instant interlocking, deep roots retightening, and organic conditioning repair.",
+      "features": [
+        "Crochet hook needle method",
+        "Root tension relief",
+        "Deep cleansing loc treatment",
+        "Neat styling finishes"
+      ]
+    },
+    {
+      "id": "fixing-wigs",
+      "name": "Fixing Wigs",
+      "price": "$80 - $150",
+      "duration": "2 - 3 hrs",
+      "description": "High-end lace melting, customizable plucking, cornrow foundation base, and premium styling for a natural look.",
+      "features": [
+        "Seamless HD lace melting",
+        "Tailored hairline plucking",
+        "Secure adhesive or glueless",
+        "Includes hot comb styling"
+      ]
+    },
+    {
+      "id": "corn-rolls",
+      "name": "Corn Rolls",
+      "price": "$200",
+      "duration": "1hr",
+      "description": "Get Quallity Corn ROlls",
+      "features": [
+        "Painless Duration"
+      ]
+    }
+  ],
+  "gallery": [
+    {
+      "title": "Precision Cornrows",
+      "url": "https://images.unsplash.com/photo-1605497746444-ac9dbd39f408?q=80&w=800&auto=format&fit=crop"
+    },
+    {
+      "title": "Natural Locs Styling",
+      "url": "https://images.unsplash.com/photo-1595959183075-c1d09e37f100?q=80&w=800&auto=format&fit=crop"
+    },
+    {
+      "title": "Neat Twisted Braids",
+      "url": "https://images.unsplash.com/photo-1620331311520-246422fd82f9?q=80&w=800&auto=format&fit=crop"
+    },
+    {
+      "title": "Lace Melt Install",
+      "url": "https://images.unsplash.com/photo-1601412436009-d964bd02edbc?q=80&w=800&auto=format&fit=crop"
+    },
+    {
+      "title": "Geometric Box Braids",
+      "url": "https://images.unsplash.com/photo-1636207543865-adc3c4070dc6?q=80&w=800&auto=format&fit=crop"
+    },
+    {
+      "title": "Luxury Hair Goddess",
+      "url": "https://images.unsplash.com/photo-1582095133179-bfd08e2fc6b3?q=80&w=800&auto=format&fit=crop"
+    }
+  ]
+}
