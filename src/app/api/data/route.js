@@ -1,97 +1,30 @@
 import { NextResponse } from "next/server";
+import { supabase } from "../../../utils/supabase";
 import fs from "fs/promises";
 import path from "path";
-import { BRAND } from "../../config";
+import { BRAND } from "../../../config";
 
-// Path to the server-side JSON database (for local development fallback)
 const DB_PATH = path.join(process.cwd(), "src", "data", "db.json");
-
-// Supabase credentials (configured via Vercel environment variables)
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-
-// Helper to read data from Supabase Cloud Postgres or Local JSON file
-async function readDatabase() {
-  // 1. Cloud Database (Production on Vercel)
-  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/studio_data?id=eq.default`, {
-        headers: { 
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
-        },
-        cache: "no-store" // Ensure real-time queries
-      });
-      if (res.ok) {
-        const list = await res.json();
-        if (list && list.length > 0) {
-          return {
-            services: list[0].services || [],
-            gallery: list[0].gallery || []
-          };
-        } else {
-          // If table exists but row is missing, insert initial flyer defaults!
-          const defaults = { services: BRAND.services, gallery: BRAND.gallery };
-          await writeDatabase(defaults);
-          return defaults;
-        }
-      } else {
-        console.warn("Supabase returned non-ok response, falling back to local file.");
-      }
-    } catch (error) {
-      console.error("Error reading from Supabase, falling back to local file:", error);
-    }
-  }
-
-  // 2. Local Database Fallback (Local Development)
-  try {
-    const fileContent = await fs.readFile(DB_PATH, "utf-8");
-    return JSON.parse(fileContent);
-  } catch (error) {
-    console.error("Error reading local database file, fallback to config:", error);
-    return { services: BRAND.services, gallery: BRAND.gallery };
-  }
-}
-
-// Helper to write data to Supabase Cloud Postgres or Local JSON file
-async function writeDatabase(data) {
-  // 1. Cloud Database (Production on Vercel)
-  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-    try {
-      const payload = {
-        id: "default",
-        services: data.services,
-        gallery: data.gallery
-      };
-
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/studio_data`, {
-        method: "POST",
-        headers: { 
-          "apikey": SUPABASE_ANON_KEY,
-          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-          "Content-Type": "application/json",
-          "Prefer": "resolution=merge-duplicates" // Instructs Supabase to perform an Upsert
-        },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        return true;
-      }
-      console.error("Supabase write failed status:", res.status);
-    } catch (error) {
-      console.error("Error writing to Supabase, falling back to local file:", error);
-    }
-  }
-
-  // 2. Local Database Fallback (Local Development)
-  await fs.writeFile(DB_PATH, JSON.stringify(data, null, 2), "utf-8");
-  return true;
-}
 
 export async function GET() {
   try {
-    const data = await readDatabase();
-    return NextResponse.json(data);
+    const { data: servicesData, error: sErr } = await supabase.from('services').select('*');
+    const { data: galleryData, error: gErr } = await supabase.from('gallery').select('*');
+
+    if (sErr || gErr || !servicesData) {
+      console.warn("Supabase fetch failed, falling back to local file.");
+      try {
+        const fileContent = await fs.readFile(DB_PATH, "utf-8");
+        return NextResponse.json(JSON.parse(fileContent));
+      } catch (error) {
+        return NextResponse.json({ services: BRAND.services, gallery: BRAND.gallery });
+      }
+    }
+
+    return NextResponse.json({
+      services: servicesData || [],
+      gallery: galleryData || []
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to read data from database" },
@@ -112,10 +45,32 @@ export async function POST(request) {
       );
     }
 
-    const updatedData = { services, gallery };
-    await writeDatabase(updatedData);
+    // Update Services (upsert existing, delete removed)
+    if (services.length > 0) {
+      await supabase.from('services').upsert(services);
+      const existingIds = services.map(s => s.id);
+      await supabase.from('services').delete().not('id', 'in', `(${existingIds.join(',')})`);
+    } else {
+      // If empty array, delete all
+      await supabase.from('services').delete().neq('id', 'nonexistent');
+    }
 
-    return NextResponse.json({ success: true, data: updatedData });
+    // Update Gallery (delete all and re-insert since frontend doesn't track IDs)
+    if (gallery.length >= 0) {
+      await supabase.from('gallery').delete().neq('title', 'nonexistent');
+      if (gallery.length > 0) {
+        // Exclude ID if it exists so Postgres can auto-increment it
+        const insertData = gallery.map(g => ({ title: g.title, url: g.url }));
+        await supabase.from('gallery').insert(insertData);
+      }
+    }
+
+    // Also write to local fallback so local devs without env still see changes
+    try {
+      await fs.writeFile(DB_PATH, JSON.stringify({ services, gallery }, null, 2), "utf-8");
+    } catch(e) {}
+
+    return NextResponse.json({ success: true, data: { services, gallery } });
   } catch (error) {
     console.error("Error updating database:", error);
     return NextResponse.json(
